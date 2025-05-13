@@ -2,6 +2,11 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+// Promisify exec for easier async/await usage
+const execAsync = promisify(exec);
 
 // Keep a global reference of the window object to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
@@ -134,6 +139,57 @@ ipcMain.handle('delete-file', async (_, filePath: string) => {
       };
     }
     
+    return { error: (error as Error).message };
+  }
+});
+
+// Handle file deletion with elevated privileges
+ipcMain.handle('delete-file-elevated', async (_, filePath: string, password: string) => {
+  try {
+    // Make sure path exists
+    await fs.promises.access(filePath);
+    
+    // Check if it's a directory or file
+    const stats = await fs.promises.stat(filePath);
+    const isDirectory = stats.isDirectory();
+    
+    // OS-specific deletion with elevated privileges
+    if (process.platform === 'win32') {
+      // Windows - Use PowerShell with elevated permissions
+      // For Windows, we use PowerShell's Start-Process with -Verb RunAs to trigger UAC
+      const command = isDirectory
+        ? `powershell.exe -Command "Start-Process -Verb RunAs cmd.exe -ArgumentList '/c rd /s /q \\"${filePath}\\"'"`
+        : `powershell.exe -Command "Start-Process -Verb RunAs cmd.exe -ArgumentList '/c del /f /q \\"${filePath}\\"'"`;
+      
+      await execAsync(command);
+      return { success: true };
+    } else if (process.platform === 'darwin' || process.platform === 'linux') {
+      // macOS/Linux - Use sudo
+      // Escape the path for shell usage
+      const escapedPath = filePath.replace(/'/g, "'\\''");
+      
+      // Use echo to pipe the password to sudo
+      const command = isDirectory
+        ? `echo '${password}' | sudo -S rm -rf '${escapedPath}'`
+        : `echo '${password}' | sudo -S rm -f '${escapedPath}'`;
+      
+      try {
+        await execAsync(command);
+        return { success: true };
+      } catch (err) {
+        // Check if the error is due to incorrect password
+        const errorMsg = (err as { stderr?: string }).stderr || '';
+        if (errorMsg.includes('incorrect password') || errorMsg.includes('Sorry, try again')) {
+          return { error: 'Incorrect password. Please try again.' };
+        }
+        throw err;
+      }
+    } else {
+      // Unsupported platform
+      return { error: 'Elevated permissions not supported on this platform.' };
+    }
+  } catch (error) {
+    console.error('Error deleting with elevated privileges:', error);
     return { error: (error as Error).message };
   }
 });

@@ -34,6 +34,20 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke('delete-file', path);
   },
   
+  deleteFileWithElevatedPrivileges: (path: unknown, password: unknown) => {
+    if (!validationRules.isString(path) || !validationRules.isValidPath(path)) {
+      console.error('Invalid path parameter in deleteFileWithElevatedPrivileges');
+      return Promise.reject(new Error('Invalid path parameter'));
+    }
+    
+    if (!validationRules.isString(password)) {
+      console.error('Invalid password parameter in deleteFileWithElevatedPrivileges');
+      return Promise.reject(new Error('Invalid password parameter'));
+    }
+    
+    return ipcRenderer.invoke('delete-file-elevated', path, password);
+  },
+  
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   
   // System information (readonly property)

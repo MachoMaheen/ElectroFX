@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileInfo, DirectoryContents, DeleteResult } from './types';
 import FileList from './components/FileList';
 import PathNavigator from './components/PathNavigator';
+import ElevatedDeleteDialog from './components/ElevatedDeleteDialog';
 import './index.css';
 
 const App: React.FC = () => {
@@ -9,6 +10,8 @@ const App: React.FC = () => {
   const [directoryContents, setDirectoryContents] = useState<DirectoryContents | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [fileToElevate, setFileToElevate] = useState<FileInfo | null>(null);
+  const [showElevatedDialog, setShowElevatedDialog] = useState<boolean>(false);
 
   // Load directory contents when path changes
   useEffect(() => {
@@ -46,12 +49,38 @@ const App: React.FC = () => {
         // Refresh the current directory after successful deletion
         const contents = await window.api.listDirectory(currentPath);
         setDirectoryContents(contents);
+      } else if (result.requiresElevation) {
+        // Show elevated permission dialog if needed
+        setFileToElevate(file);
+        setShowElevatedDialog(true);
       } else if (result.error) {
         alert(`Error deleting ${file.name}: ${result.error}`);
       }
     } catch (err) {
       console.error('Error during deletion:', err);
       alert(`Failed to delete: ${(err as Error).message}`);
+    }
+  };
+
+  // Handle deletion with elevated permissions
+  const handleElevatedDelete = async (password: string) => {
+    if (!fileToElevate) return;
+    
+    try {
+      const result = await window.api.deleteFileWithElevatedPrivileges(fileToElevate.path, password);
+      
+      if (result.success) {
+        // Refresh directory after successful deletion
+        const contents = await window.api.listDirectory(currentPath);
+        setDirectoryContents(contents);
+        setShowElevatedDialog(false);
+        setFileToElevate(null);
+      } else if (result.error) {
+        alert(`Error deleting file: ${result.error}`);
+      }
+    } catch (err) {
+      console.error('Error during elevated deletion:', err);
+      alert(`Failed to delete with elevated privileges: ${(err as Error).message}`);
     }
   };
 
@@ -106,6 +135,19 @@ const App: React.FC = () => {
       <div className="mt-4 bg-blue-100 p-2 rounded text-sm text-gray-700">
         <p>Platform: {window.api.platform}</p>
       </div>
+
+      {/* Elevated Delete Dialog */}
+      {showElevatedDialog && fileToElevate && (
+        <ElevatedDeleteDialog
+          file={fileToElevate}
+          onConfirm={handleElevatedDelete}
+          onCancel={() => {
+            setShowElevatedDialog(false);
+            setFileToElevate(null);
+          }}
+          platform={window.api.platform}
+        />
+      )}
     </div>
   );
 };

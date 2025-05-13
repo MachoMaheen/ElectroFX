@@ -36,6 +36,7 @@ declare global {
       testIpc: () => Promise<TestResult>;
       listDirectory: (path: string) => Promise<DirectoryContents>;
       deleteFile: (path: string) => Promise<DeleteResult>;
+      deleteFileWithElevatedPrivileges: (path: string, password: string) => Promise<DeleteResult>;
       selectDirectory: () => Promise<DirectorySelectResult>;
       platform: string;
     }
